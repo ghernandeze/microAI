@@ -24,7 +24,7 @@ def get_settings() -> Settings:
 
     api_url = os.getenv("MODEL_API_URL")
     api_key = os.getenv("MODEL_API_KEY")
-    model_name = os.getenv("MODEL_NAME", "gpt-4.1-mini")
+    model_name = os.getenv("MODEL_NAME", "google/gemini-2.0-flash-exp:free")
     timeout = int(os.getenv("MODEL_TIMEOUT_SECONDS", "45"))
 
     return Settings(

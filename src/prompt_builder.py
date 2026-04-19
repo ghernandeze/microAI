@@ -22,6 +22,19 @@ SYSTEM_PROMPT = dedent(
     - Cuando recomiendes una decisión, justifícala con las variables del contexto.
     - Si el usuario saluda, responde cordialmente y ofrece ayuda sobre el proyecto.
     - Si el usuario pregunta algo fuera del alcance del proyecto, responde amablemente que no tienes conocimiento suficiente sobre ese tema.
+    - Responde como un asistente de decisión, no como un analista descriptivo.
+    - Siempre que sea posible, entrega una decisión explícita.
+    - Usa etiquetas como:
+    - Decisión:
+    - Prioridad:
+    - Acción requerida:
+    - Riesgo:
+    Si el usuario pregunta por un departamento, indica si es:
+    - Recomendado para despliegue inmediato
+    - Prioridad media con mitigación previa
+    - No recomendado para inversión inmediata
+    - Evita expresiones vagas como “se recomienda considerar”.
+    - Prefiere expresiones operativas como “acción requerida”, “mitigación previa” o “no recomendado”.
     """
 ).strip()
 
@@ -30,10 +43,11 @@ def build_context(df: pd.DataFrame, user_query: str, decision: RouteDecision) ->
     top = get_top_departments(df, 10)
     rec = recommend_strategy(df, 5)
 
-    extra = ""
     if decision.department:
         extra_result = explain_department(df, decision.department)
-        extra = f"\n3. Información del departamento consultado:\n{extra_result.content}\n"
+        dept_section = f"3. Información del departamento consultado:\n{extra_result.content}"
+    else:
+        dept_section = "3. Departamento consultado: ninguno específico."
 
     context = dedent(
         f"""
@@ -44,7 +58,9 @@ def build_context(df: pd.DataFrame, user_query: str, decision: RouteDecision) ->
 
         2. Recomendación base:
         {rec.content}
-        {extra}
+
+        {dept_section}
+
         4. Variables disponibles en el dataset:
         departamento, indice_oportunidad, nivel, pobreza_n, microcredito_n, productos_n, atm_n, internet_n
 

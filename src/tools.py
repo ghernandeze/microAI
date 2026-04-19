@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import json
+import unicodedata
 from dataclasses import dataclass
 from typing import Optional
 
 import pandas as pd
 
+from .config import get_settings
 from .data_loader import normalize_text
 
 
@@ -125,3 +128,84 @@ def simulate_weights(
         f"{view.to_string(index=False)}"
     )
     return ToolResult(title="Simulación de pesos", content=content)
+
+
+def emitir_decision_formal(row):
+    indice = row["indice_oportunidad"]
+    internet = row["internet_n"]
+    micro = row["microcredito_n"]
+
+    if indice >= 0.75 and internet >= 0.50:
+        return "Recomendado para despliegue inmediato"
+    elif indice >= 0.55:
+        return "Prioridad media, requiere mitigación previa"
+    else:
+        return "No recomendado para inversión inmediata"
+    
+    
+def accion_requerida(row):
+    if row["internet_n"] < 0.40:
+        return "Fortalecer viabilidad digital antes del despliegue."
+    if row["microcredito_n"] > 0.70:
+        return "Diseñar estrategia de entrada temprana y validación comercial."
+    if row["productos_n"] > 0.60:
+        return "Desarrollar acciones de educación financiera y acompañamiento local."
+    return "Validar condiciones operativas y ejecutar piloto controlado."
+
+
+def generate_map(df: pd.DataFrame) -> ToolResult:
+    try:
+        import folium
+    except ImportError:
+        return ToolResult(
+            title="Error: folium no instalado",
+            content="Instala folium con: pip install folium",
+        )
+
+    settings = get_settings()
+    geo_path = settings.project_root / "data" / "geo" / "Colombia.geo.json"
+    output_path = settings.project_root / "reports" / "mapa_oportunidad.html"
+
+    if not geo_path.exists():
+        return ToolResult(
+            title="Error: GeoJSON no encontrado",
+            content=f"No se encontró el archivo {geo_path}",
+        )
+
+    output_path.parent.mkdir(exist_ok=True)
+
+    with open(geo_path, "r", encoding="utf-8") as f:
+        geo_data = json.load(f)
+
+    _geojson_map = {
+        "BOGOTA D.C.": "SANTAFE DE BOGOTA D.C",
+        "SAN ANDRES Y PROVIDENCIA": "ARCHIPIELAGO DE SAN ANDRES PROVIDENCIA Y SANTA CATALINA",
+    }
+
+    def _norm_geojson(name: str) -> str:
+        sin_tildes = "".join(
+            c for c in unicodedata.normalize("NFD", str(name).upper())
+            if unicodedata.category(c) != "Mn"
+        )
+        return _geojson_map.get(sin_tildes, sin_tildes)
+
+    map_df = df[["departamento", "indice_oportunidad"]].copy()
+    map_df["departamento"] = map_df["departamento"].apply(_norm_geojson)
+
+    m = folium.Map(location=[4, -74], zoom_start=5)
+    folium.Choropleth(
+        geo_data=geo_data,
+        data=map_df,
+        columns=["departamento", "indice_oportunidad"],
+        key_on="feature.properties.NOMBRE_DPT",
+        fill_color="YlOrRd",
+        fill_opacity=0.7,
+        line_opacity=0.2,
+        legend_name="Índice de oportunidad",
+    ).add_to(m)
+    m.save(str(output_path))
+
+    return ToolResult(
+        title="Mapa generado",
+        content=f"Mapa coroplético guardado en:\n{output_path}\n\nAbre ese archivo en tu navegador para verlo.",
+    )

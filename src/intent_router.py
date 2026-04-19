@@ -18,12 +18,11 @@ class RouteDecision:
 
 
 KNOWN_DEPARTMENTS = [
-    "amazonas", "antioquia", "arauca", "atlantico", "bogota", "bolivar", "boyaca",
-    "caldas", "caqueta", "casanare", "cauca", "cesar", "choco", "cordoba",
-    "cundinamarca", "guainia", "guaviare", "huila", "la guajira", "magdalena",
-    "meta", "narino", "norte de santander", "putumayo", "quindio", "risaralda",
-    "san andres", "san andres y providencia", "santander", "sucre", "tolima",
-    "valle del cauca", "vaupes", "vichada"
+    "antioquia", "atlantico", "bogota", "bolivar", "boyaca", "caldas",
+    "caqueta", "cauca", "cesar", "choco", "cordoba", "cundinamarca",
+    "huila", "la guajira", "magdalena", "meta", "narino",
+    "norte de santander", "quindio", "risaralda", "santander",
+    "sucre", "tolima", "valle del cauca",
 ]
 
 
@@ -78,5 +77,8 @@ def route_query(query: str) -> RouteDecision:
 
     if any(word in q for word in OUT_OF_SCOPE_HINTS):
         return RouteDecision(intent="out_of_scope", use_llm=False)
+
+    if any(word in q for word in ["mapa", "mapa de colombia", "visualizar", "visualizacion", "ver mapa", "genera el mapa", "genera mapa"]):
+        return RouteDecision(intent="map", use_llm=False)
 
     return RouteDecision(intent="general_question", use_llm=True)

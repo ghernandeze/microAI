@@ -4,7 +4,7 @@ from .data_loader import load_ranking_data
 from .intent_router import route_query
 from .llm_client import LLMClient
 from .prompt_builder import build_messages
-from .tools import explain_department, get_top_departments, recommend_strategy, simulate_weights
+from .tools import explain_department, generate_map, get_top_departments, recommend_strategy, simulate_weights
 
 
 HELP_TEXT = """Puedes escribir preguntas libres, por ejemplo:
@@ -58,6 +58,9 @@ def handle_local_fallback(df, decision, raw_query: str) -> str:
             "como ranking de departamentos, explicación de resultados, recomendaciones "
             "y simulación de pesos. Sobre ese tema no tengo contexto suficiente."
         )
+
+    if decision.intent == "map":
+        return generate_map(df).content
 
     return (
         "No pude responder esa consulta en modo local. "
