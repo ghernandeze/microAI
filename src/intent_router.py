@@ -81,4 +81,39 @@ def route_query(query: str) -> RouteDecision:
     if any(word in q for word in ["mapa", "mapa de colombia", "visualizar", "visualizacion", "ver mapa", "genera el mapa", "genera mapa"]):
         return RouteDecision(intent="map", use_llm=False)
 
+    # Top by single variable
+    VAR_KEYWORDS = {
+        "pobreza": "pobreza_n",
+        "microcredito": "microcredito_n",
+        "microcrédito": "microcredito_n",
+        "productos": "productos_n",
+        "inclusion": "productos_n",
+        "inclusión": "productos_n",
+        "atm": "atm_n",
+        "infraestructura": "atm_n",
+        "internet": "internet_n",
+        "digital": "internet_n",
+    }
+    if any(word in q for word in ["top por", "ranking por", "ordena por", "mayor", "menos acceso", "mas acceso", "más acceso"]):
+        for keyword, col in VAR_KEYWORDS.items():
+            if keyword in q:
+                m = re.search(r"top\s+(\d+)", q)
+                n = int(m.group(1)) if m else 10
+                return RouteDecision(intent="top_by_variable", top_n=n, weights=[col], use_llm=False)
+
+    # Filter by level
+    if any(word in q for word in ["nivel alto", "nivel medio", "nivel bajo", "solo alto", "solo medio", "solo bajo"]):
+        if "alto" in q:
+            return RouteDecision(intent="filter_level", weights=["Alto"], use_llm=False)
+        if "medio" in q:
+            return RouteDecision(intent="filter_level", weights=["Medio"], use_llm=False)
+        if "bajo" in q:
+            return RouteDecision(intent="filter_level", weights=["Bajo"], use_llm=False)
+
+    # Weight adjustment via natural language → let LLM interpret and recalculate
+    WEIGHT_HINTS = ["peso", "ponderacion", "ponderación", "importancia", "dale mas", "dale más",
+                    "reduce el peso", "aumenta el peso", "cambia el peso", "ajusta"]
+    if any(word in q for word in WEIGHT_HINTS):
+        return RouteDecision(intent="weight_adjust", use_llm=True)
+
     return RouteDecision(intent="general_question", use_llm=True)

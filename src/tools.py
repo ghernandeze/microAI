@@ -130,6 +130,42 @@ def simulate_weights(
     return ToolResult(title="Simulación de pesos", content=content)
 
 
+def get_top_by_variable(df: pd.DataFrame, column: str, n: int = 10) -> ToolResult:
+    LABELS = {
+        "pobreza_n": "mayor pobreza",
+        "microcredito_n": "mayor brecha de microcrédito",
+        "productos_n": "mayor brecha de inclusión financiera",
+        "atm_n": "menor infraestructura financiera (ATM)",
+        "internet_n": "mayor viabilidad digital",
+    }
+    if column not in df.columns:
+        return ToolResult(title="Variable no encontrada", content=f"La variable '{column}' no existe.")
+    view = (
+        df[["departamento", column, "indice_oportunidad", "nivel"]]
+        .sort_values(column, ascending=False)
+        .head(max(1, int(n)))
+    )
+    label = LABELS.get(column, column)
+    return ToolResult(
+        title=f"Top {n} por {label}",
+        content=view.to_string(index=False),
+    )
+
+
+def filter_by_level(df: pd.DataFrame, level: str) -> ToolResult:
+    valid = {"Alto", "Medio", "Bajo"}
+    level = level.capitalize()
+    if level not in valid:
+        return ToolResult(title="Nivel inválido", content=f"Usa: Alto, Medio o Bajo.")
+    view = df[df["nivel"] == level][["departamento", "indice_oportunidad", "nivel"]]
+    if view.empty:
+        return ToolResult(title=f"Nivel {level}", content="No hay departamentos con ese nivel.")
+    return ToolResult(
+        title=f"Departamentos de nivel {level}",
+        content=view.to_string(index=False),
+    )
+
+
 def emitir_decision_formal(row):
     indice = row["indice_oportunidad"]
     internet = row["internet_n"]
@@ -153,59 +189,108 @@ def accion_requerida(row):
     return "Validar condiciones operativas y ejecutar piloto controlado."
 
 
-def generate_map(df: pd.DataFrame) -> ToolResult:
-    try:
-        import folium
-    except ImportError:
-        return ToolResult(
-            title="Error: folium no instalado",
-            content="Instala folium con: pip install folium",
-        )
+_GEOJSON_MAP = {
+    "BOGOTA D.C.": "SANTAFE DE BOGOTA D.C",
+    "SAN ANDRES Y PROVIDENCIA": "ARCHIPIELAGO DE SAN ANDRES PROVIDENCIA Y SANTA CATALINA",
+}
 
-    settings = get_settings()
-    geo_path = settings.project_root / "data" / "geo" / "Colombia.geo.json"
-    output_path = settings.project_root / "reports" / "mapa_oportunidad.html"
 
-    if not geo_path.exists():
-        return ToolResult(
-            title="Error: GeoJSON no encontrado",
-            content=f"No se encontró el archivo {geo_path}",
-        )
+def _norm_geojson(name: str) -> str:
+    sin_tildes = "".join(
+        c for c in unicodedata.normalize("NFD", str(name).upper())
+        if unicodedata.category(c) != "Mn"
+    )
+    return _GEOJSON_MAP.get(sin_tildes, sin_tildes)
 
-    output_path.parent.mkdir(exist_ok=True)
 
-    with open(geo_path, "r", encoding="utf-8") as f:
-        geo_data = json.load(f)
-
-    _geojson_map = {
-        "BOGOTA D.C.": "SANTAFE DE BOGOTA D.C",
-        "SAN ANDRES Y PROVIDENCIA": "ARCHIPIELAGO DE SAN ANDRES PROVIDENCIA Y SANTA CATALINA",
-    }
-
-    def _norm_geojson(name: str) -> str:
-        sin_tildes = "".join(
-            c for c in unicodedata.normalize("NFD", str(name).upper())
-            if unicodedata.category(c) != "Mn"
-        )
-        return _geojson_map.get(sin_tildes, sin_tildes)
-
-    map_df = df[["departamento", "indice_oportunidad"]].copy()
+def _build_choropleth(
+    df: pd.DataFrame,
+    value_col: str,
+    legend_name: str,
+    output_path,
+    geo_data: dict,
+) -> None:
+    import folium
+    map_df = df[["departamento", value_col]].copy()
     map_df["departamento"] = map_df["departamento"].apply(_norm_geojson)
-
     m = folium.Map(location=[4, -74], zoom_start=5)
     folium.Choropleth(
         geo_data=geo_data,
         data=map_df,
-        columns=["departamento", "indice_oportunidad"],
+        columns=["departamento", value_col],
         key_on="feature.properties.NOMBRE_DPT",
         fill_color="YlOrRd",
         fill_opacity=0.7,
         line_opacity=0.2,
-        legend_name="Índice de oportunidad",
+        legend_name=legend_name,
     ).add_to(m)
     m.save(str(output_path))
 
+
+def _load_geo(settings) -> tuple:
+    try:
+        import folium  # noqa: F401
+    except ImportError:
+        return None, ToolResult(
+            title="Error: folium no instalado",
+            content="Instala folium con: pip install folium",
+        )
+    geo_path = settings.project_root / "data" / "geo" / "Colombia.geo.json"
+    if not geo_path.exists():
+        return None, ToolResult(
+            title="Error: GeoJSON no encontrado",
+            content=f"No se encontró el archivo {geo_path}",
+        )
+    with open(geo_path, "r", encoding="utf-8") as f:
+        geo_data = json.load(f)
+    return geo_data, None
+
+
+def generate_map(df: pd.DataFrame) -> ToolResult:
+    settings = get_settings()
+    geo_data, err = _load_geo(settings)
+    if err:
+        return err
+    output_path = settings.project_root / "reports" / "mapa_oportunidad.html"
+    output_path.parent.mkdir(exist_ok=True)
+    _build_choropleth(df, "indice_oportunidad", "Índice de oportunidad", output_path, geo_data)
     return ToolResult(
         title="Mapa generado",
         content=f"Mapa coroplético guardado en:\n{output_path}\n\nAbre ese archivo en tu navegador para verlo.",
+    )
+
+
+def generate_map_with_weights(
+    df: pd.DataFrame,
+    peso_pobreza: float,
+    peso_micro: float,
+    peso_productos: float,
+    peso_atm: float,
+    peso_internet: float,
+) -> ToolResult:
+    total = peso_pobreza + peso_micro + peso_productos + peso_atm + peso_internet
+    if total <= 0:
+        raise ValueError("La suma de los pesos debe ser mayor que cero.")
+    w = {
+        "pobreza_n":    peso_pobreza  / total,
+        "microcredito_n": peso_micro  / total,
+        "productos_n":  peso_productos / total,
+        "atm_n":        peso_atm      / total,
+        "internet_n":   peso_internet / total,
+    }
+    temp = df.copy()
+    temp["indice_simulado"] = sum(temp[col] * w[col] for col in w)
+
+    settings = get_settings()
+    geo_data, err = _load_geo(settings)
+    if err:
+        return err
+    output_path = settings.project_root / "reports" / "mapa_oportunidad.html"
+    output_path.parent.mkdir(exist_ok=True)
+    _build_choropleth(temp, "indice_simulado", "Índice simulado", output_path, geo_data)
+    return ToolResult(
+        title="Mapa con pesos personalizados generado",
+        content=f"Mapa generado con pesos: pobreza={w['pobreza_n']:.2f}, microcrédito={w['microcredito_n']:.2f}, "
+                f"productos={w['productos_n']:.2f}, ATM={w['atm_n']:.2f}, internet={w['internet_n']:.2f}\n"
+                f"Guardado en:\n{output_path}",
     )

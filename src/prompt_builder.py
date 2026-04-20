@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from textwrap import dedent
+from typing import Optional
 
 import pandas as pd
 
@@ -79,16 +80,22 @@ def build_context(df: pd.DataFrame, user_query: str, decision: RouteDecision) ->
     return context
 
 
-def build_messages(df: pd.DataFrame, user_query: str, decision: RouteDecision) -> list[dict[str, str]]:
+def build_messages(
+    df: pd.DataFrame,
+    user_query: str,
+    decision: RouteDecision,
+    history: Optional[list[dict]] = None,
+) -> list[dict[str, str]]:
     context = build_context(df, user_query, decision)
-    return [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {
-            "role": "user",
-            "content": (
-                "Responde usando solo el contexto dado. Si recomiendas algo, explica el porqué "
-                "a partir de las variables del modelo.\n\n"
-                f"{context}"
-            ),
-        },
-    ]
+    system_content = SYSTEM_PROMPT + "\n\n" + context
+
+    messages: list[dict[str, str]] = [{"role": "system", "content": system_content}]
+
+    # Include last 6 messages (3 turns) so the LLM can reference previous answers
+    if history:
+        for msg in history[-6:]:
+            if msg["role"] in ("user", "assistant"):
+                messages.append({"role": msg["role"], "content": msg["content"]})
+
+    messages.append({"role": "user", "content": user_query})
+    return messages

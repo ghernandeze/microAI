@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from .agent_tools import run_agent
 from .data_loader import load_ranking_data
 from .intent_router import route_query
 from .llm_client import LLMClient
-from .prompt_builder import build_messages
-from .tools import explain_department, generate_map, get_top_departments, recommend_strategy, simulate_weights
+from .tools import (
+    explain_department, filter_by_level, generate_map,
+    get_top_by_variable, get_top_departments, recommend_strategy, simulate_weights,
+)
 
 
 HELP_TEXT = """Puedes escribir preguntas libres, por ejemplo:
@@ -62,6 +65,19 @@ def handle_local_fallback(df, decision, raw_query: str) -> str:
     if decision.intent == "map":
         return generate_map(df).content
 
+    if decision.intent == "top_by_variable" and decision.weights:
+        return get_top_by_variable(df, decision.weights[0], decision.top_n or 10).content
+
+    if decision.intent == "filter_level" and decision.weights:
+        return filter_by_level(df, decision.weights[0]).content
+
+    if decision.intent == "weight_adjust":
+        return (
+            "Para redistribuir los pesos usa el formato: simular 0.30 0.30 0.15 0.10 0.15 "
+            "(pobreza, microcrédito, productos, ATM, internet). "
+            "O activa el LLM para hacerlo con lenguaje natural."
+        )
+
     return (
         "No pude responder esa consulta en modo local. "
         "Si activas el API, el agente podrá responder preguntas más abiertas."
@@ -95,9 +111,8 @@ def main() -> None:
             break
 
         try:
-            if llm_client.is_enabled() and decision.use_llm:
-                messages = build_messages(df, query, decision)
-                answer = llm_client.generate(messages)
+            if llm_client.is_enabled():
+                answer, _ = run_agent(query, df, llm_client)
             else:
                 answer = handle_local_fallback(df, decision, query)
         except Exception as e:
