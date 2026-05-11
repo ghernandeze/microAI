@@ -24,9 +24,9 @@ AGENT_SYSTEM_PROMPT = """Eres un asistente de apoyo a decisiones para un proyect
 
 REGLAS IMPORTANTES:
 - Si el usuario saluda o hace una pregunta casual, responde brevemente y ofrece ayuda. NO llames herramientas para saludos.
-- Solo llama herramientas cuando el usuario haga una pregunta concreta sobre datos, departamentos o análisis.
+- SIEMPRE llama la herramienta correspondiente cuando el usuario pregunte sobre datos, departamentos, niveles o rankings. NUNCA respondas preguntas de datos desde el contexto de la conversación — siempre consulta la herramienta aunque ya hayas mostrado información similar antes.
 - NUNCA inventes valores numéricos — úsalos solo si vienen de una herramienta.
-- Para contexto externo (noticias, situación económica actual, geografía) usa search_web.
+- OBLIGATORIO: Si el usuario pregunta sobre noticias, seguridad, iniciativas del gobierno, situación económica, contexto regional, o cualquier información que NO esté en el dataset, DEBES llamar search_web inmediatamente. NUNCA respondas ese tipo de preguntas diciendo que no tienes información — usa search_web y presenta los resultados.
 
 Variables del modelo (todas normalizadas 0-1):
 - pobreza_n: necesidad económica (1 = máxima pobreza)
@@ -294,7 +294,7 @@ def run_agent(
         messages.append(response["raw_assistant_message"])
 
         for tc in response["tool_calls"]:
-            if tc["name"] == "generate_map":
+            if tc["name"] in ("generate_map", "generate_map_with_weights"):
                 has_map = True
             try:
                 result = execute_tool(tc["name"], tc["arguments"], df)
